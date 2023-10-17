@@ -38,7 +38,7 @@ struct Bno055 {
     }
   }
   Response request_euler_angle() {
-    return reg_read(0x1A, euler_angle);
+    return reg_read(EUL_DATA, euler_angle);
   }
   float get_x_rad() const {
     return to_rad(euler_angle.x);
@@ -52,6 +52,10 @@ struct Bno055 {
 
  private:
   enum Register {
+    EUL_DATA_X = 0x1A,
+    EUL_DATA_Y = 0x1C,
+    EUL_DATA_Z = 0x1E,
+    EUL_DATA = EUL_DATA_X,
     UNIT_SEL = 0x3B,
     OPR_MODE = 0x3D,
     AXIS_MAP_CONFIG = 0x41,
@@ -67,7 +71,7 @@ struct Bno055 {
     if(uint8_t buf[2] = {}; bus_.uart_receive(buf, timeout) && buf[0] == 0xEE) {
       return Response{buf[1]};
     }
-    return Response{};
+    return Response::NO_RESPONSE;
   }
   template<int N>
   Response reg_read(const uint8_t addr, uint8_t (&buf)[N]) {
@@ -90,7 +94,7 @@ struct Bno055 {
         }
       }
     }
-    return Response{};
+    return Response::NO_RESPONSE;
   }
   template<class T>
   Response reg_read(const uint8_t addr, T& buf) {
