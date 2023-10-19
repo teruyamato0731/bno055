@@ -22,20 +22,35 @@ struct Bno055 {
   };
 
   Bno055(PinName tx, PinName rx) : bus_{{tx, rx, 115200}} {}
-  void init() {
-    while(reg_write(OPR_MODE, {0x00}) != Response::WRITE_SUCCESS) {
-      printf("bno055:Operating Mode setting CONFIGMODE\n");
+  bool try_init(const std::chrono::microseconds timeout) {
+    auto start = HighResClock::now();
+    while(HighResClock::now() - start < timeout) {
+      if(request_config_mode() != Response::WRITE_SUCCESS) {
+        printf("bno055:Operating Mode setting CONFIGMODE\n");
+        continue;
+      }
+      if(request_imu_mode() != Response::WRITE_SUCCESS) {
+        printf("bno055:Operating Mode setting IMU\n");
+        continue;
+      }
+      return true;
     }
-    ThisThread::sleep_for(19ms);
-    while(reg_write(UNIT_SEL, {0x04}) != Response::WRITE_SUCCESS) {
-      printf("bno055:UNIT_SEL setting\n");
-    }
-    while(reg_write(AXIS_MAP_CONFIG, {0x24}) != Response::WRITE_SUCCESS) {
-      printf("bno055:AXIS_MAP_CONFIG setting\n");
-    }
-    while(reg_write(OPR_MODE, {0x08}) != Response::WRITE_SUCCESS) {
-      printf("bno055:Operating Mode setting IMU\n");
-    }
+    return false;
+  }
+  Response request_config_mode() {
+    return reg_write(OPR_MODE, {0x00});
+  }
+  Response request_imu_mode() {
+    return reg_write(OPR_MODE, {0x08});
+  }
+  Response request_euler_x() {
+    return reg_read(EUL_DATA_X, euler_angle.x);
+  }
+  Response request_euler_y() {
+    return reg_read(EUL_DATA_Y, euler_angle.y);
+  }
+  Response request_euler_z() {
+    return reg_read(EUL_DATA_Z, euler_angle.z);
   }
   Response request_euler_angle() {
     return reg_read(EUL_DATA, euler_angle);
@@ -81,12 +96,17 @@ struct Bno055 {
     if(uint8_t buf_byte; bus_.uart_receive(buf_byte, timeout)) {
       switch(buf_byte) {
         case 0xBB: {
-          if(bus_.uart_receive(buf_byte, timeout) && buf_byte == N && bus_.uart_receive(buf, timeout)) {
-            return Response::WRITE_SUCCESS;
+          // Success
+          if(bus_.uart_receive(buf_byte, timeout) && buf_byte == N) {      // length
+            if(uint8_t raw_buf[N]; bus_.uart_receive(raw_buf, timeout)) {  // register data
+              memcpy(buf, raw_buf, N);
+              return Response::WRITE_SUCCESS;
+            }
           }
           break;
         }
         case 0xEE: {
+          // Fail
           if(bus_.uart_receive(buf_byte, timeout)) {
             return Response{buf_byte};
           }
@@ -101,8 +121,8 @@ struct Bno055 {
     return reg_read(addr, reinterpret_cast<uint8_t(&)[sizeof(buf)]>(buf));
   }
   static float to_rad(const int16_t val) {
-    constexpr auto radian_representation = 900;
-    constexpr float k = 1.0f / radian_representation;
+    constexpr auto deg_rep = 16;
+    constexpr float k = 2 * M_PI / (360 * deg_rep);
     return val * k;
   }
 
